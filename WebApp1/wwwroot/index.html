@@ -1,10 +1,140 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
+    <meta charset="utf-8" />
+    <title>KeyValue Manager</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+        body { font-family: system-ui, Arial; padding: 20px; max-width:900px; margin:auto; }
+        label {display:block; margin-top:8px;}
+        input[type=text] { width:100%; padding:8px; margin-top:4px; box-sizing:border-box;}
+        table { width:100%; border-collapse: collapse; margin-top:20px;}
+        th,td { border:1px solid #ddd; padding:8px; text-align:left;}
+        .actions button { margin-right:6px; }
+    </style>
 </head>
 <body>
-$END$
+<h1>KeyValue Manager</h1>
+
+<form id="createForm">
+    <label>Key
+        <input id="keyInput" required type="text" placeholder="exampleKey" />
+    </label>
+    <label>Value
+        <input id="valueInput" required type="text" placeholder="some value" />
+    </label>
+    <label>Description (optional)
+        <input id="descInput" type="text" placeholder="optional description" />
+    </label>
+    <button type="submit">Create</button>
+</form>
+
+<h2>Data</h2>
+<table id="dataTable">
+    <thead><tr><th>Id</th><th>Key</th><th>Value</th><th>Description</th><th>Actions</th></tr></thead>
+    <tbody></tbody>
+</table>
+
+<script>
+    const api = '/api/KeyValues';
+
+    async function fetchAll() {
+        const res = await fetch(api);
+        if (!res.ok) {
+            alert('Error fetching: ' + res.statusText);
+            return;
+        }
+        const data = await res.json();
+        renderTable(data);
+    }
+
+    function renderTable(items) {
+        const tbody = document.querySelector('#dataTable tbody');
+        tbody.innerHTML = '';
+        items.forEach(it => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+          <td>${it.id}</td>
+          <td>${escapeHtml(it.key)}</td>
+          <td>${escapeHtml(it.value)}</td>
+          <td>${escapeHtml(it.description ?? '')}</td>
+          <td class="actions">
+            <button onclick="editItem(${it.id})">Edit</button>
+            <button onclick="deleteItem(${it.id})">Delete</button>
+          </td>
+        `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function escapeHtml(s) {
+        return s ? s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) : '';
+    }
+
+    document.getElementById('createForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const key = document.getElementById('keyInput').value.trim();
+        const value = document.getElementById('valueInput').value.trim();
+        const description = document.getElementById('descInput').value.trim();
+        try {
+            const res = await fetch(api, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ key, value, description })
+            });
+            if (res.status === 201) {
+                document.getElementById('createForm').reset();
+                await fetchAll();
+            } else {
+                const err = await res.json().catch(()=>null);
+                alert('Create failed: ' + (err?.message || res.statusText));
+            }
+        } catch (err) {
+            alert('Network error: ' + err);
+        }
+    });
+
+    async function editItem(id) {
+        // basic inline edit using prompt for brevity
+        const res = await fetch(`${api}/${id}`);
+        if (!res.ok) { alert('Could not fetch item'); return; }
+        const it = await res.json();
+        const key = prompt('Key', it.key);
+        if (key === null) return; // cancelled
+        const value = prompt('Value', it.value);
+        if (value === null) return;
+        const description = prompt('Description', it.description ?? '') ?? '';
+
+        try {
+            const updateRes = await fetch(`${api}/${id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id, key, value, description })
+            });
+            if (updateRes.ok) {
+                await fetchAll();
+            } else {
+                const err = await updateRes.json().catch(()=>null);
+                alert('Update failed: ' + (err?.message || updateRes.statusText));
+            }
+        } catch (err) {
+            alert('Network error: ' + err);
+        }
+    }
+
+    async function deleteItem(id) {
+        if (!confirm('Delete item ' + id + '?')) return;
+        const res = await fetch(`${api}/${id}`, { method: 'DELETE' });
+        if (res.status === 204) {
+            await fetchAll();
+        } else {
+            const err = await res.json().catch(()=>null);
+            alert('Delete failed: ' + (err?.message || res.statusText));
+        }
+    }
+
+    // initial load
+    fetchAll();
+</script>
 </body>
 </html>
